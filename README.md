@@ -122,7 +122,7 @@ docker exec -it backend python seed.py
 You can inspect the SQLite database entries inside the running container using Python's built-in `sqlite3` module to verify that new ratings are persisted correctly.
 
 ```bash
-docker exec -it hr_backend python -c "
+docker exec -it backend python -c "
 import sqlite3
 conn = sqlite3.connect('data/app.db')
 print('Ratings:', conn.cursor().execute('SELECT * FROM ratings').fetchall())
