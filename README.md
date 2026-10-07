@@ -58,14 +58,14 @@ Ensure you have the following installed on your machine:
 
 ### 1. Clone the Repository
 ```bash
-git clone [https://github.com/SonaCandeu/hr-software.git](https://github.com/SonaCandeu/hr-software.git)
+git clone https://github.com/SonaCandeu/hr-software.git
 cd hr-software
 ```
 
 ### 2. Build and Run Containers
 Start the application using Docker Compose. This will build and start two containers:
-- **`hr_backend`**: FastAPI backend running on port `8000`
-- **`hr_frontend`**: Nginx web server serving the React app on port `80`
+- **`backend`**: FastAPI backend running on port `8000`
+- **`frontend`**: Nginx web server serving the React app on port `80`
 
 ```bash
 docker compose up --build -d
@@ -86,6 +86,7 @@ Run the Python seed script inside the `backend` container:
 
 ```bash
 docker exec -it backend python seed.py
+```
 
 ---
 
