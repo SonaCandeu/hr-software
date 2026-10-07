@@ -14,6 +14,9 @@ export function EmployeeDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
 
+  // Cooldown State
+  const [cooldownDaysLeft, setCooldownDaysLeft] = useState<number | null>(null);
+
   // Form State
   const [score, setScore] = useState<number>(4);
   const [feedback, setFeedback] = useState<string>('');
@@ -25,7 +28,7 @@ export function EmployeeDetailsPage() {
 
     const targetId = parseInt(id, 10);
 
-    // Block access immediately if user tries to open their own evaluation page
+    // Prevent user from rating themselves
     if (currentUser.id === targetId) {
       setIsAuthorized(false);
       setLoading(false);
@@ -38,12 +41,9 @@ export function EmployeeDetailsPage() {
 
         // 1. Fetch subordinate IDs managed by active leader
         const subRes = await fetch(`/api/employees/${currentUser.id}/subordinates`);
-        if (!subRes.ok) {
-          throw new Error('Failed to verify access permissions.');
-        }
+        if (!subRes.ok) throw new Error('Failed to verify access permissions.');
+        
         const subordinateIds: number[] = await subRes.json();
-
-        // 2. Validate if target employee is in reporting line
         const hasAccess = subordinateIds.includes(targetId);
         setIsAuthorized(hasAccess);
 
@@ -52,13 +52,16 @@ export function EmployeeDetailsPage() {
           return;
         }
 
-        // 3. Fetch employee details if authorized
+        // 2. Fetch employee details if authorized
         const empRes = await fetch(`/api/employees/${id}`);
-        if (!empRes.ok) {
-          throw new Error('Failed to fetch employee details.');
-        }
+        if (!empRes.ok) throw new Error('Failed to fetch employee details.');
+        
         const data: Employee = await empRes.json();
         setEmployee(data);
+
+        // 3. Check 7-day cooldown against rating history
+        checkCooldown(data.ratings, currentUser.name);
+
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
       } finally {
@@ -69,7 +72,23 @@ export function EmployeeDetailsPage() {
     checkAccessAndFetchData();
   }, [id, currentUser]);
 
-  // Handle submitting rating
+  // Client-side Cooldown Helper
+  const checkCooldown = (ratings: Rating[], reviewerName: string) => {
+    const previousRating = ratings.find((r) => r.reviewer_name === reviewerName);
+    if (previousRating && previousRating.created_at) {
+      const lastDate = new Date(previousRating.created_at).getTime();
+      const now = new Date().getTime();
+      const diffInDays = (now - lastDate) / (1000 * 3600 * 24);
+
+      if (diffInDays < 7) {
+        const remainingDays = Math.ceil(7 - diffInDays);
+        setCooldownDaysLeft(remainingDays);
+        return;
+      }
+    }
+    setCooldownDaysLeft(null);
+  };
+
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -104,14 +123,11 @@ export function EmployeeDetailsPage() {
 
       const newRating: Rating = await res.json();
 
-      setEmployee((prev) =>
-        prev
-          ? {
-              ...prev,
-              ratings: [newRating, ...prev.ratings],
-            }
-          : null
-      );
+      const updatedRatings = [newRating, ...employee!.ratings];
+      setEmployee((prev) => (prev ? { ...prev, ratings: updatedRatings } : null));
+
+      // Trigger cooldown immediately upon submission
+      checkCooldown(updatedRatings, currentUser.name);
 
       setScore(4);
       setFeedback('');
@@ -166,7 +182,7 @@ export function EmployeeDetailsPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
-      {/* Header */}
+      {/* Navigation & Header */}
       <div>
         <button
           onClick={() => navigate('/')}
@@ -201,6 +217,13 @@ export function EmployeeDetailsPage() {
             </span>
           </p>
 
+          {/* Cooldown Alert Banner */}
+          {cooldownDaysLeft !== null && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-md">
+              ⏳ <strong>Rating Cooldown:</strong> You submitted a rating for {employee.name} recently. You can rate them again in <strong>{cooldownDaysLeft} day(s)</strong>.
+            </div>
+          )}
+
           {submitError && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded">
               {submitError}
@@ -219,7 +242,8 @@ export function EmployeeDetailsPage() {
                 step="1"
                 value={score}
                 onChange={(e) => setScore(parseInt(e.target.value, 10))}
-                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                disabled={cooldownDaysLeft !== null}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:opacity-50"
               />
               <div className="flex justify-between text-xs text-gray-400 mt-1">
                 <span>1 (Unsatisfactory)</span>
@@ -236,18 +260,19 @@ export function EmployeeDetailsPage() {
               <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
+                disabled={cooldownDaysLeft !== null}
                 rows={4}
                 placeholder="Write constructive notes regarding recent achievements or areas of improvement..."
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-gray-50"
               />
             </div>
 
             <button
               type="submit"
-              disabled={submitting}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-md transition duration-150 disabled:opacity-50"
+              disabled={submitting || cooldownDaysLeft !== null}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-md transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Submitting...' : 'Submit Rating'}
+              {submitting ? 'Submitting...' : cooldownDaysLeft !== null ? 'Cooldown Active' : 'Submit Rating'}
             </button>
           </form>
         </section>

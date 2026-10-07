@@ -1,13 +1,13 @@
 # backend/app/routers/ratings.py
-from fastapi import APIRouter, Depends, HTTPException, Header, status
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+from datetime import datetime, timedelta, timezone
 from typing import List
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy import desc, text
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import EmployeeModel, RatingModel
 from app.schemas import RatingCreate, RatingResponse
-
 
 router = APIRouter(prefix="/api/employees/{employee_id}/ratings", tags=["Ratings"])
 
@@ -53,13 +53,9 @@ def add_rating_for_employee(
     x_reviewer_id: int = Header(..., alias="X-Reviewer-Id")
 ):
     """
-    Submits a new rating for an employee.
-    Enforces that:
-    1. The target employee exists.
-    2. The reviewer cannot rate themselves.
-    3. The reviewer is above the target employee in the organizational hierarchy.
+    Submits a new rating for an employee with hierarchy validation and a 1-week cooldown.
     """
-    # 1. Check if the target employee exists
+    # 1. Verify target employee exists
     target_employee = db.query(EmployeeModel).filter(EmployeeModel.id == employee_id).first()
     if not target_employee:
         raise HTTPException(
@@ -82,18 +78,47 @@ def add_rating_for_employee(
             detail="Invalid reviewer ID provided in header."
         )
 
-    # 4. Check reporting line hierarchy
+    # 4. Enforce reporting line hierarchy
     if not is_leader_above_employee(db, leader_id=x_reviewer_id, target_employee_id=employee_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permission denied: You can only rate employees within your reporting line."
         )
 
-    # 5. Create and persist the rating
+    # 5. Enforce 1-week (7-day) cooldown per leader-employee pair
+    last_rating = (
+        db.query(RatingModel)
+        .filter(
+            RatingModel.employee_id == employee_id,
+            RatingModel.reviewer_name == reviewer.name
+        )
+        .order_by(RatingModel.created_at.desc())
+        .first()
+    )
+
+    if last_rating and last_rating.created_at:
+        now = datetime.now(timezone.utc)
+        
+        # Ensure timezone compatibility
+        last_created = (
+            last_rating.created_at.replace(tzinfo=timezone.utc)
+            if last_rating.created_at.tzinfo is None
+            else last_rating.created_at
+        )
+        
+        cooldown_end = last_created + timedelta(days=7)
+        if now < cooldown_end:
+            days_left = (cooldown_end - now).days or 1
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cooldown active: You must wait {days_left} more day(s) before rating {target_employee.name} again."
+            )
+
+    # 6. Save rating
     db_rating = RatingModel(
         score=payload.score,
         feedback=payload.feedback,
-        reviewer_name=payload.reviewer_name or reviewer.name,
+        reviewer_name=reviewer.name,
         employee_id=employee_id
     )
     
