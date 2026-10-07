@@ -29,8 +29,9 @@ The application enforces organizational hierarchy rules—allowing managers to r
 │   │   └── routers/
 │   │       ├── employees.py
 │   │       └── ratings.py
-│   ├── data/             # SQLite database location (app.db)
-│   ├── schema.sql        # Initial DB schema and hierarchy seeds
+│   ├── data/
+│   │   ├── app.db
+│   │   └── app.sql
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
@@ -79,18 +80,12 @@ Navigate to your web browser and access:
 
 ## Database Seeding (First Time Setup)
 
-If starting with a clean SQLite database, run your SQL schema script (`schema.sql`) to populate initial employees and the `leader_lead` organizational hierarchy.
+To populate the database with the initial employees and hierarchy from `backend/data/app.sql`, you can use the `backend/seed.py` script inside the running container.
+
+Run the Python seed script inside the `backend` container:
 
 ```bash
-docker exec -i hr_backend python -c "
-import sqlite3
-with open('schema.sql', 'r') as f:
-    conn = sqlite3.connect('data/app.db')
-    conn.executescript(f.read())
-    conn.close()
-print('Database schema & mock data seeded successfully!')
-"
-```
+docker exec -it backend python seed.py
 
 ---
 
