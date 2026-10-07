@@ -1,0 +1,22 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# IDEs & Editors
+.vscode/
+.idea/
+
+# Backend (Python / FastAPI)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Frontend (Node / React / Vite)
+node_modules/
+dist/
+dist-ssr/
+build/
+.vite/
+*.log
